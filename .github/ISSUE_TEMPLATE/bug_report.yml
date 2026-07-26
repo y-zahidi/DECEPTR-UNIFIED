@@ -1,0 +1,78 @@
+name: 🐛 Bug Report
+description: Report a bug in DECEPTR-UNIFIED
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report.
+        Please provide as much detail as possible.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is.
+      placeholder: Tell us what you see.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Steps to reproduce the behavior.
+      placeholder: |
+        1. Run `docker compose up -d`
+        2. Navigate to '...'
+        3. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: A clear and concise description of what you expected to happen.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which component is affected?
+      options:
+        - Deception (honeypots, pipeline)
+        - DFIR (Velociraptor, reports)
+        - OpenCTI (connectors, correlation)
+        - Attack simulation (CALDERA, Atomic)
+        - Bridge API
+        - Dashboard
+        - Docker / infrastructure
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: |
+        - OS: [e.g. Ubuntu 22.04, Windows 11]
+        - Docker version: [e.g. 24.0.7]
+        - Docker Compose version: [e.g. v2.23.0]
+        - RAM available: [e.g. 16 GB]
+      placeholder: |
+        OS: Ubuntu 22.04
+        Docker: 24.0.7
+        Compose: v2.23.0
+        RAM: 16 GB
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: Please copy and paste any relevant log output.
+      render: shell

@@ -1,9 +1,11 @@
 # DECEPTR
 
-**Unified Cyberdeception, DFIR, CTI correlation, and attack-simulation platform.**
+**Unified Cyberdeception, DFIR, CTI correlation, and attack-simulation platform — built as a capstone project during my engineering studies at ISMAGI Rabat.**
 
-> PFA — ISMAGI Rabat — Chambre des Représentants du Maroc  
-> Author: **Yassir ZAHIDI**
+![status](https://img.shields.io/badge/status-active-5cf2c1?labelColor=0a0e14)
+![license](https://img.shields.io/badge/license-MIT-5cf2c1?labelColor=0a0e14)
+![docker](https://img.shields.io/badge/docker-compose-5cf2c1?labelColor=0a0e14)
+![platform](https://img.shields.io/badge/platform-FastAPI%20%7C%20OpenCTI-5cf2c1?labelColor=0a0e14)
 
 ## Quick start
 
@@ -31,39 +33,7 @@ A working security platform that combines four main capabilities, scoped to what
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    CALDERA / Atomic Red Team                     │
-│                    (Attack simulation)                          │
-└──────────────────────┬──────────────────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────────────────┐
-│                    DECEPTION LAYER                               │
-│  Cowrie / Dionaea / Web HP / Canary Files / Fake AD / LDAP     │
-│  Breadcrumbs / Honeyport / RDP                                   │
-└──────────────────────┬──────────────────────────────────────────┘
-                       │ Filebeat TLS 1.3
-┌──────────────────────▼──────────────────────────────────────────┐
-│              Redis ──► Pipeline Python                           │
-│  (Enrich: GeoIP, VT, Abuse, Feodo, MITRE ATT&CK)               │
-└──┬────────┬────────┬───────────────────────────────────────────┘
-   │        │        │
-┌──▼────────▼────────▼───────────────────────────────────────────┐
-│ Elasticsearch  + MySQL 8  + MinIO  + Redis 7                    │
-│ (Storage & viz)                                                   │
-└──┬──────────────────────────────────────────────────────────────┘
-   │
-┌──▼──────────────────────────────────────────────────────────────┐
-│         BRIDGE API (FastAPI)                                     │
-│   shared_schema + sync bidirectionnel DECEPTR ↔ DFIR            │
-└──┬──────────────────────────────────────────────────────────────┘
-   │
-┌──▼──────────────────────┐  ┌────────────────────────────────────┐
-│    OpenCTI               │  │    DFIR                           │
-│  (Correlation TTP /      │  │  Velociraptor                     │
-│   Campagne / Rapports)   │  │  (USB offline + bridge sync)      │
-└─────────────────────────┘  └───────────────────────────────────┘
-```
+![DECEPTR Unified Architecture](docs/architecture-overview.png)
 
 ## What lives where
 
@@ -129,6 +99,12 @@ Unified SOC dashboard with 5 tabs:
 - [ ] Improved ML models for anomaly detection
 - [ ] Automated deployment scripts
 
+## Contributing
+
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on development setup, reporting guidelines, and the pull request workflow.
+
 ## License
 
-Projet académique — PFA ISMAGI Rabat 2026
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+Academic project — ISMAGI Rabat, 2026.

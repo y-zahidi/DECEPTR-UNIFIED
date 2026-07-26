@@ -1,8 +1,8 @@
 # DECEPTR-UNIFIED — Architecture Unifiée
 
-> PFA — ISMAGI Rabat — Chambre des Représentants du Maroc
-> **Yassir ZAHIDI** — Encadrants : Fikri KHALID | Ahagan OTMAN
-> Version : 1.1 — 2026-07-21 (mis à jour avec les compteurs réels du repo)
+> Projet académique réalisé dans le cadre de mon cycle d'ingénieur à l'ISMAGI Rabat
+> **Yassir ZAHIDI** — 2026
+
 
 ---
 
