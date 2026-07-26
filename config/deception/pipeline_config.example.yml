@@ -1,0 +1,51 @@
+# Deception Pipeline Configuration Example
+# This is a representative configuration showing the pipeline structure
+
+pipeline:
+  stages:
+    - name: normalizer
+      enabled: true
+      config:
+        log_format: json
+        timestamp_field: "@timestamp"
+    
+    - name: enricher
+      enabled: true
+      config:
+        geoip_enabled: true
+        virustotal_enabled: true
+        abuseipdb_enabled: true
+    
+    - name: correlator
+      enabled: true
+      config:
+        correlation_window: 300
+    
+    - name: risk_scorer
+      enabled: true
+      config:
+        base_score: 5
+        multiplier: 1.5
+    
+    - name: detector
+      enabled: true
+      config:
+        threshold: 0.8
+    
+    - name: alerter
+      enabled: true
+      config:
+        alert_format: json
+    
+    - name: responder
+      enabled: true
+      config:
+        auto_response: false
+
+deception_levels:
+  - NO_ACTION
+  - ANALYZE
+  - TARPIT
+  - DEPLOY_DECOY
+  - ESCALATE
+  - BLOCK

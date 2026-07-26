@@ -1,0 +1,77 @@
+
+# =============================================================================
+# DECEPTR-UNIFIED — LITE OVERRIDE (for 8GB RAM hosts / WSL2 with 5-6GB)
+# =============================================================================
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.lite.yml up -d
+#
+# What this does:
+#   - Shrinks every container's memory limit to the minimum that works
+#   - Cuts JVM heaps so the stack fits in ~4.5GB total
+#   - Disables OpenCTI by default (set START_OPENCTI=1 to include it)
+#
+# Without this override, the full stack needs ~11GB and will OOM-crash
+# Docker Desktop on an 8GB host.
+# =============================================================================
+
+services:
+
+  # ── ELK (deception) — biggest consumers, shrink hard ──────────────────────
+  elasticsearch:
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms384m -Xmx384m"
+      - bootstrap.memory_lock=false
+
+  logstash:
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    environment:
+      - LS_JAVA_OPTS=-Xms256m -Xmx256m
+
+  kibana:
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    environment:
+      - NODE_OPTIONS=--max-old-space-size=384
+
+  # ── Pipeline / API / Dashboard — already small, trim slightly ─────────────
+  pipeline:
+    deploy: { resources: { limits: { memory: 192m } } }
+  api:
+    deploy: { resources: { limits: { memory: 128m } } }
+  mysql:
+    deploy: { resources: { limits: { memory: 256m } } }
+  minio:
+    deploy: { resources: { limits: { memory: 128m } } }
+  redis:
+    deploy: { resources: { limits: { memory: 64m } } }
+
+  # ── Honeypots — small but keep responsive ─────────────────────────────────
+  cowrie:
+    deploy: { resources: { limits: { memory: 128m } } }
+  dionaea:
+    deploy: { resources: { limits: { memory: 96m } } }
+  rdp-honeypot:
+    deploy: { resources: { limits: { memory: 128m } } }
+  web-honeypot:
+    deploy: { resources: { limits: { memory: 64m } } }
+  ldap-honeypot:
+    deploy: { resources: { limits: { memory: 64m } } }
+  canary-smb:
+    deploy: { resources: { limits: { memory: 64m } } }
+  filebeat:
+    deploy: { resources: { limits: { memory: 96m } } }
+  elastalert:
+    deploy: { resources: { limits: { memory: 128m } } }
+  dashboard:
+    deploy: { resources: { limits: { memory: 32m } } }

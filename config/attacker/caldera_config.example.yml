@@ -1,0 +1,38 @@
+# CALDERA Configuration Example
+# This is a representative configuration showing attack simulation settings
+
+main:
+  server:
+    bind_address: "0.0.0.0"
+    port: 8888
+    ssl_enabled: true
+    ssl_cert: "/ssl/server.pem"
+    ssl_key: "/ssl/server-key.pem"
+
+api_key: "${CALDERA_API_KEY}"
+encryption_key: "${CALDERA_ENCRYPTION_KEY}"
+
+abilities:
+  enabled:
+    - discovery
+    - credential-access
+    - lateral-movement
+    - collection
+    - command-and-control
+
+agents:
+  connection:
+    attempt_limit: 3
+    sleep_min: 30
+    sleep_max: 60
+  
+  bootstrap_abilities:
+    - "3d23831e-4a1f-4dd0-8e2e-9141f6287e93"  # manual
+
+plugins:
+  atomic:
+    enabled: true
+    atomic_path: "/data/atomic-red-team"
+  
+  stockpile:
+    enabled: true

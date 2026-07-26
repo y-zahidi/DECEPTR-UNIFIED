@@ -1,0 +1,923 @@
+
+# =============================================================================
+# DECEPTR-UNIFIED — Main Stack (Deception + OpenCTI)
+# =============================================================================
+# 24 services in 3 isolated networks:
+#   dmz         — honeypots exposed to attackers
+#   internal    — pipeline, databases, API (never exposed)
+#   opencti_net — OpenCTI CTI platform (own ES/Redis/MinIO/RabbitMQ)
+#
+# restart: "no" for all daemon services — one-shot containers use "no"
+#
+# Usage:
+#   docker compose up -d                                            (standard)
+#   docker compose -f docker-compose.yml -f docker-compose.hardened.yml up -d  (hardened)
+#   docker compose -f docker-compose.yml -f docker-compose.lite.yml up -d      (8GB RAM)
+#   docker compose --profile opencti up -d                          (add OpenCTI)
+#
+# Requirements: copy deception/.env.example -> .env and fill secrets
+#               copy opencti/.env.example  -> opencti/.env  and fill secrets
+# =============================================================================
+
+networks:
+  dmz:
+    name: deception_dmz
+  internal:
+    name: deception_internal
+  opencti_net:
+    driver: bridge
+  attacker_net:
+    driver: bridge
+
+volumes:
+  # Deception stack
+  cowrie_logs:
+  dionaea_logs:
+  elastic_data:
+  mysql_data:
+  redis_data:
+  minio_data:
+  web_logs:
+  canary_docs_data:
+  rdp_captures:
+  rdp_logs:
+  # OpenCTI stack (isolated, profile)
+  opencti_redis_data:
+  opencti_es_data:
+  opencti_minio_data:
+  opencti_amqp_data:
+  opencti_connector_cache:
+  # Honeypot logs for filebeat collection
+  ldap_logs:
+
+x-fast-healthcheck: &fast-hc
+  interval: 5s
+  timeout: 3s
+  retries: 20
+
+services:
+
+  # ╔══════════════════════════════════════════════════════════════════════════╗
+  # ║  DECEPTION — HONEYPOTS (DMZ)                                             ║
+  # ╚══════════════════════════════════════════════════════════════════════════╝
+
+  cowrie:
+    image: cowrie/cowrie:latest
+    container_name: deceptr-cowrie
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    ports:
+      - "2222:2222"   # SSH leurre
+      - "2223:2223"   # Telnet leurre
+    volumes:
+      - ./deception/cowrie/cowrie.cfg:/cowrie/cowrie-git/etc/cowrie.cfg:ro
+      - ./deception/cowrie/userdb.txt:/cowrie/cowrie-git/etc/userdb.txt:ro
+      - ./deception/cowrie/honeyfs:/cowrie/cowrie-git/honeyfs:ro
+      - ./deception/cowrie/txtcmds:/cowrie/cowrie-git/share/cowrie/txtcmds:ro
+      - ./deception/cowrie/data/ssh-keys:/cowrie/cowrie-git/etc/cowrie.cfg.d/ssh-keys
+      - cowrie_logs:/cowrie/cowrie-git/var/log/cowrie
+    networks: [dmz]
+    environment:
+      - COWRIE_HOSTNAME=${COWRIE_HOSTNAME:?COWRIE_HOSTNAME not set}
+    healthcheck:
+      <<: *fast-hc
+      test: ["CMD", "python3", "-c", "import socket; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1',2222)); s.close()"]
+      start_period: 10s
+
+  web-honeypot:
+    build:
+      context: ./deception/honeypot-web
+      dockerfile: Dockerfile
+    container_name: deceptr-web-honeypot
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    ports:
+      - "8082:443"   # HTTPS via nginx TLS reverse proxy
+      - "8083:8080"  # HTTP redirect (optionnel, dev/debug)
+    environment:
+      - ELASTICSEARCH_HOST=elasticsearch:9200
+      - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD:?ELASTIC_PASSWORD not set}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD not set}
+      - REDIS_QUEUE=${REDIS_QUEUE:-deceptr:events}
+      - LOG_FILE=/app/logs/web.json
+    networks: [dmz, internal]
+    volumes:
+      - web_logs:/app/logs
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "2"
+    healthcheck:
+      <<: *fast-hc
+      test: ["CMD-SHELL", "python -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1', 8080)); s.close()\""]
+      start_period: 8s
+
+  canary-smb:
+    build:
+      context: ./deception/decoys/canary
+      dockerfile: Dockerfile.smb
+    container_name: deceptr-canary-smb
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    ports:
+      - "4455:445"   # SMB sur port non-standard (evite conflit avec dionaea:1445)
+    environment:
+      - SMB_PASS=${SMB_PASS:?SMB_PASS not set}
+      - CANARY_DOCS_SRC=/canary_src
+    networks: [dmz]
+    volumes:
+      - canary_docs_data:/share
+      - canary_docs_data:/canary_src:ro
+    healthcheck:
+      <<: *fast-hc
+      test: ["CMD-SHELL", "smbstatus -b | grep -q ."]
+      start_period: 10s
+
+  dionaea:
+    build:
+      context: ./deception/dionaea
+    container_name: deceptr-dionaea
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    ports:
+      - "2121:21"
+      - "8081:80"
+      - "1445:445"
+      - "13306:3306"
+    volumes: []
+
+    networks: [dmz]
+    healthcheck:
+      <<: *fast-hc
+      test: ["CMD-SHELL", "pidof dionaea || true"]
+      start_period: 10s
+
+  rdp-honeypot:
+    build:
+      context: ./deception/decoys/rdp
+      dockerfile: Dockerfile
+    container_name: deceptr-rdp-honeypot
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    ports:
+      - "3389:3389"   # Real RDP — full protocol implementation
+    volumes:
+      - rdp_captures:/app/captures
+      - rdp_logs:/app/logs
+    networks: [dmz]
+    healthcheck:
+      <<: *fast-hc
+      test: ["CMD-SHELL", "python -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1', 3389)); s.close()\""]
+      start_period: 10s
+
+  ldap-honeypot:
+    build:
+      context: ./deception/decoys/ldap
+      dockerfile: Dockerfile
+    container_name: deceptr-ldap-honeypot
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    ports:
+      - "389:389"    # LDAP + StartTLS
+      - "636:636"    # LDAPS (TLS from connect)
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD not set}
+      - REDIS_QUEUE=${REDIS_QUEUE:-deceptr:events}
+      - ELASTICSEARCH_HOST=elasticsearch:9200
+      - LOG_FILE=/app/logs/ldap.json
+    volumes:
+      - ldap_logs:/app/logs
+    networks: [dmz, internal]
+    cap_add:
+      - NET_BIND_SERVICE
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      <<: *fast-hc
+      test: ["CMD-SHELL", "python -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1', 389)); s.close()\""]
+      start_period: 8s
+
+  # ╔══════════════════════════════════════════════════════════════════════════╗
+  # ║  DECEPTION — DATA PIPELINE (internal)                                   ║
+  # ╚══════════════════════════════════════════════════════════════════════════╝
+
+  filebeat:
+    image: elastic/filebeat:8.14.1
+    container_name: deceptr-filebeat
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    command: ["--strict.perms=false"]
+    user: root
+    volumes:
+      - ./deception/elk/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ./deception/elk/certs/ca.crt:/usr/share/filebeat/certs/ca.crt:ro
+      - cowrie_logs:/cowrie/logs:ro
+      - dionaea_logs:/dionaea/logs:ro
+      - web_logs:/web_logs:ro
+      - rdp_logs:/rdp/logs:ro
+      - ldap_logs:/ldap/logs:ro
+    networks: [internal]
+    depends_on: [logstash]
+    healthcheck:
+      <<: *fast-hc
+      test: ["CMD-SHELL", "ps aux | grep -q filebeat"]
+      start_period: 8s
+
+  logstash:
+    image: logstash:8.14.1
+    container_name: deceptr-logstash
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    command: ["-f", "/usr/share/logstash/pipeline/cowrie.conf"]
+    volumes:
+      - ./deception/elk/logstash/pipeline/cowrie.conf:/usr/share/logstash/pipeline/cowrie.conf:ro
+      - ./deception/elk/logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./deception/elk/certs/logstash.crt:/usr/share/logstash/config/certs/logstash.crt:ro
+      - ./deception/elk/certs/logstash.key:/usr/share/logstash/config/certs/logstash.key:ro
+    ports:
+      - "127.0.0.1:5044:5044"
+    environment:
+      - LS_JAVA_OPTS=-Xms512m -Xmx512m
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:?ELASTIC_PASSWORD not set}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD not set}
+      - REDIS_QUEUE=${REDIS_QUEUE:-deceptr:events}
+    networks: [internal]
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pidof java || true"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  redis:
+    image: redis:7-alpine
+    container_name: deceptr-redis
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD not set}
+    volumes:
+      - redis_data:/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD:?REDIS_PASSWORD not set} ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  elasticsearch:
+    image: elasticsearch:8.14.1
+    container_name: deceptr-elasticsearch
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elastic_data:/usr/share/elasticsearch/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health | grep -q '\"status\":\"\\(green\\|yellow\\)\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 90s
+
+  kibana:
+    image: kibana:8.14.1
+    container_name: deceptr-kibana
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1024m
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      # ES runs with xpack.security.enabled=false -> connect WITHOUT credentials.
+      # (Setting ELASTICSEARCH_USERNAME=elastic is forbidden in Kibana 8.x and
+      #  causes a FATAL config-validation crash loop.)
+      - XPACK_SECURITY_ENABLED=false
+      - XPACK_FLEET_ENABLED=false
+      - XPACK_INGEST_MANAGER_ENABLED=false
+      - XPACK_SECURITYSENSORENABLED=false
+      - XPACK_TASK_MANAGER_POLL_INTERVAL=30000
+      - XPACK_ALERTING_ENABLED=false
+      - XPACK_OBSERVABILITY_ENABLED=false
+      - XPACK_APM_ENABLED=false
+    ports:
+      - "127.0.0.1:5601:5601"
+    networks: [internal]
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:5601/api/status > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 180s
+
+  mysql:
+    image: mysql:8.0
+    container_name: deceptr-mysql
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    command: --innodb-buffer-pool-size=128M --performance-schema=OFF --max-connections=50
+    ports:
+      - "127.0.0.1:3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD not set}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-deceptr}
+      MYSQL_USER: ${MYSQL_USER:?MYSQL_USER not set}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD not set}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./deception/mysql:/docker-entrypoint-initdb.d
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: deceptr-minio
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    command: server /data --console-address ":9001"
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER not set}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD not set}
+    volumes:
+      - minio_data:/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/minio/health/live >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ╔══════════════════════════════════════════════════════════════════════════╗
+  # ║  DECEPTION — PIPELINE + API + DASHBOARD                                  ║
+  # ╚══════════════════════════════════════════════════════════════════════════╝
+
+  pipeline:
+    build:
+      context: ./deception/pipeline
+    container_name: deceptr-pipeline
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    command: python main.py
+    volumes:
+      - ./deception/pipeline:/app:rw
+    environment:
+      - ELASTIC_HOST=http://elasticsearch:9200
+      - ELASTIC_USER=elastic
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:?ELASTIC_PASSWORD not set}
+      - MYSQL_HOST=mysql
+      - MYSQL_DB=deceptr
+      - MYSQL_USER=deceptr
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:?MYSQL_PASSWORD not set}
+      - VIRUSTOTAL_KEY=${VIRUSTOTAL_KEY:-}
+      - ABUSEIPDB_KEY=${ABUSEIPDB_KEY:-}
+      - GEOIP_DB=/app/data/GeoLite2-City.mmdb
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD not set}
+      - REDIS_QUEUE=${REDIS_QUEUE:-deceptr:events}
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY not set}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:?MINIO_SECRET_KEY not set}
+      - MINIO_SECURE=false
+      - LOG_LEVEL=INFO
+      - POLL_INTERVAL=${POLL_INTERVAL:-5}
+      - REDIS_BATCH_SIZE=${REDIS_BATCH_SIZE:-5000}
+    networks: [internal]
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  api:
+    build:
+      context: ./deception/pipeline
+    container_name: deceptr-api
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      - ALLOW_INSECURE_SECRETS=${ALLOW_INSECURE_SECRETS:-false}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://127.0.0.1:8088,http://localhost:8088}
+      - ELASTIC_HOST=http://elasticsearch:9200
+      - ELASTIC_USER=elastic
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:?ELASTIC_PASSWORD not set}
+      - MYSQL_HOST=mysql
+      - MYSQL_DB=deceptr
+      - MYSQL_USER=deceptr
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:?MYSQL_PASSWORD not set}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD not set}
+      - REDIS_QUEUE=${REDIS_QUEUE:-deceptr:events}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET not set}
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY not set}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:?MINIO_SECRET_KEY not set}
+      - MINIO_SECURE=false
+      - CANARY_OUTPUT_DIR=/app/data/canary_docs
+      - DECOY_SHARE_DIR=/app/data/canary_docs
+      - BRIDGE_SECRET=${BRIDGE_SECRET:?BRIDGE_SECRET not set}
+      - BRIDGE_ALLOW_INSECURE=${BRIDGE_ALLOW_INSECURE:-false}
+    networks: [internal]
+    volumes:
+      - canary_docs_data:/app/data/canary_docs
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1', 8000)); s.close()\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  dashboard:
+    image: nginx:1.27-alpine
+    container_name: deceptr-dashboard
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    ports:
+      - "8088:80"
+    volumes:
+      - ./deception/dashboard:/usr/share/nginx/html:ro
+    networks: [internal]
+    depends_on:
+      api:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ╔══════════════════════════════════════════════════════════════════════════╗
+  # ║  KIBANA SETUP (one-shot)                                                 ║
+  # ╚══════════════════════════════════════════════════════════════════════════╝
+
+  kibana-setup:
+    image: elasticsearch:8.14.1
+    container_name: deceptr-kibana-setup
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    networks: [internal]
+    environment:
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:?ELASTIC_PASSWORD not set}
+      - KIBANA_SYSTEM_PASS=${KIBANA_SYSTEM_PASS:?KIBANA_SYSTEM_PASS not set}
+    entrypoint: >
+      bash -c "until curl -sf http://elasticsearch:9200 >/dev/null 2>&1; do sleep 5; done; if curl -sf -o /dev/null http://elasticsearch:9200/_security/_authenticate 2>/dev/null; then curl -sf -X POST -u elastic:$$ELASTIC_PASSWORD -H 'Content-Type: application/json' http://elasticsearch:9200/_security/user/kibana_system/_password -d '{\"password\":\"'$$KIBANA_SYSTEM_PASS'\"}' && echo 'kibana_system OK'; else echo 'ES security disabled — skipping kibana_system password setup'; fi"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  kibana-dashboards:
+    image: python:3.11-slim
+    container_name: deceptr-kibana-dashboards
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    networks: [internal]
+    working_dir: /setup
+    environment:
+      - KIBANA_URL=http://kibana:5601
+      - KIBANA_USER=elastic
+      - KIBANA_PASS=${ELASTIC_PASSWORD:?ELASTIC_PASSWORD not set}
+    volumes:
+      - ./deception/elk/kibana-setup.py:/setup/kibana-setup.py:ro
+    entrypoint: >
+      bash -c "echo 'Waiting for Kibana API...';
+      until python -c \"import urllib.request,base64,os;c=base64.b64encode((os.environ['KIBANA_USER']+':'+os.environ['KIBANA_PASS']).encode()).decode();req=urllib.request.Request('http://kibana:5601/api/status',headers={'kbn-xsrf':'true','Authorization':'Basic '+c});assert urllib.request.urlopen(req,timeout=5).status==200\" >/dev/null 2>&1; do
+        echo '  Kibana not ready, retrying...';
+        sleep 10;
+      done;
+      echo 'Kibana is ready! Running dashboard setup...';
+      python kibana-setup.py"
+    depends_on:
+      kibana:
+        condition: service_started
+      kibana-setup:
+        condition: service_completed_successfully
+
+  # ╔══════════════════════════════════════════════════════════════════════════╗
+  # ║  ELASTALERT 2 — Alerting Engine                                          ║
+  # ╚══════════════════════════════════════════════════════════════════════════╝
+
+  elastalert:
+    image: jertel/elastalert2:latest
+    container_name: deceptr-elastalert
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    volumes:
+      - ./deception/elk/elastalert/config.yaml:/opt/elastalert/config.yaml
+      - ./deception/elk/elastalert/smtp_auth.yaml:/opt/elastalert/smtp_auth.yaml:ro
+      - ./deception/elk/elastalert/rules:/opt/elastalert/rules:ro
+    environment:
+      - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD:?ELASTIC_PASSWORD not set}
+      - ES_PASSWORD=${ELASTIC_PASSWORD:?ELASTIC_PASSWORD not set}
+      - ELASTALERT_SLACK_WEBHOOK=${ELASTALERT_SLACK_WEBHOOK}
+    networks: [internal]
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ╔══════════════════════════════════════════════════════════════════════════╗
+  # ║  OPENCTI STUBS (profile only — full defs in opencti/docker-compose.yml)  ║
+  # ╚══════════════════════════════════════════════════════════════════════════╝
+
+  opencti-redis:
+    image: redis:7-alpine
+    container_name: deceptr-opencti-redis
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    volumes:
+      - opencti_redis_data:/data
+    networks: [opencti_net]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  opencti-elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.14.1
+    container_name: deceptr-opencti-es
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1024m
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - opencti_es_data:/usr/share/elasticsearch/data
+    networks: [opencti_net]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200 >/dev/null || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 30
+
+  opencti-minio:
+    image: minio/minio:latest
+    container_name: deceptr-opencti-minio
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${OPENCTI_MINIO_USER:?OPENCTI_MINIO_USER not set}
+      MINIO_ROOT_PASSWORD: ${OPENCTI_MINIO_PASSWORD:?OPENCTI_MINIO_PASSWORD not set}
+    volumes:
+      - opencti_minio_data:/data
+    networks: [opencti_net]
+
+  opencti-rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: deceptr-opencti-rabbitmq
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    ports:
+      - "127.0.0.1:15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${OPENCTI_RABBIT_USER:?OPENCTI_RABBIT_USER not set}
+      RABBITMQ_DEFAULT_PASS: ${OPENCTI_RABBIT_PASS:?OPENCTI_RABBIT_PASS not set}
+    volumes:
+      - opencti_amqp_data:/var/lib/rabbitmq
+    networks: [opencti_net]
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 10
+      start_period: 60s
+
+  opencti:
+    image: opencti/platform:6.3.6
+    container_name: deceptr-opencti
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1536m
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      NODE_OPTIONS: "--max-old-space-size=1024"
+      APP__PORT: "8080"
+      APP__BASE_URL: "http://localhost:8080"
+      APP__ADMIN__EMAIL: ${OPENCTI_ADMIN_EMAIL:-admin@deceptr.local}
+      APP__ADMIN__PASSWORD: ${OPENCTI_ADMIN_PASSWORD:?OPENCTI_ADMIN_PASSWORD not set}
+      APP__ADMIN__TOKEN: ${OPENCTI_ADMIN_TOKEN:?OPENCTI_ADMIN_TOKEN not set}
+      APP__APP_LOGS__CONSOLE__LEVEL: info
+      PROVIDERS__LOCAL__STRATEGY: LocalStrategy
+      REDIS__HOSTNAME: opencti-redis
+      REDIS__PORT: "6379"
+      ELASTICSEARCH__URL: http://opencti-elasticsearch:9200
+      MINIO__ENDPOINT: opencti-minio
+      MINIO__PORT: "9000"
+      MINIO__ACCESS_KEY: ${OPENCTI_MINIO_USER:?OPENCTI_MINIO_USER not set}
+      MINIO__SECRET_KEY: ${OPENCTI_MINIO_PASSWORD:?OPENCTI_MINIO_PASSWORD not set}
+      MINIO__SECURE: "false"
+      RABBITMQ__HOSTNAME: opencti-rabbitmq
+      RABBITMQ__PORT: "5672"
+      RABBITMQ__PORT_MANAGEMENT: "15672"
+      RABBITMQ__USERNAME: ${OPENCTI_RABBIT_USER:?OPENCTI_RABBIT_USER not set}
+      RABBITMQ__PASSWORD: ${OPENCTI_RABBIT_PASS:?OPENCTI_RABBIT_PASS not set}
+    networks: [opencti_net]
+    depends_on:
+      opencti-redis:
+        condition: service_healthy
+      opencti-elasticsearch:
+        condition: service_healthy
+      opencti-minio:
+        condition: service_started
+      opencti-rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+
+  opencti-worker:
+    image: opencti/worker:6.3.6
+    container_name: deceptr-opencti-worker
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    environment:
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: ${OPENCTI_ADMIN_TOKEN:?OPENCTI_ADMIN_TOKEN not set}
+      WORKER_LOG_LEVEL: info
+    networks: [opencti_net]
+    depends_on:
+      opencti:
+        condition: service_healthy
+
+  # ── DECEPTR ↔ OpenCTI connectors (bidirectional CTI sync) ──────────────
+  connector-push:
+    image: python:3.11-slim
+    container_name: deceptr-connector-push
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    working_dir: /connector
+    volumes:
+      - ./opencti/connectors/deceptr_to_opencti.py:/connector/deceptr_to_opencti.py:ro
+    environment:
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: ${OPENCTI_ADMIN_TOKEN:?OPENCTI_ADMIN_TOKEN not set}
+      DECEPTR_API_URL: http://api:8000
+      DECEPTR_API_USER: ${API_ADMIN_USER:-admin}
+      DECEPTR_API_PASS: ${API_ADMIN_PASSWORD:?API_ADMIN_PASSWORD not set}
+      CTI_SYNC_INTERVAL: "300"
+    command: ["python", "-u", "deceptr_to_opencti.py"]
+    networks: [opencti_net, internal]
+    depends_on:
+      api:
+        condition: service_healthy
+      opencti:
+        condition: service_healthy
+
+  connector-pull:
+    image: python:3.11-slim
+    container_name: deceptr-connector-pull
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    working_dir: /connector
+    volumes:
+      - ./opencti/connectors/opencti_to_deceptr.py:/connector/opencti_to_deceptr.py:ro
+      - opencti_connector_cache:/data
+    environment:
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: ${OPENCTI_ADMIN_TOKEN:?OPENCTI_ADMIN_TOKEN not set}
+      DECEPTR_API_URL: http://api:8000
+      DECEPTR_API_USER: ${API_ADMIN_USER:-admin}
+      DECEPTR_API_PASS: ${API_ADMIN_PASSWORD:?API_ADMIN_PASSWORD not set}
+      CTI_SYNC_INTERVAL: "600"
+      CTI_LOOKBACK_HOURS: "24"
+      CTI_MAX_PER_CYCLE: "500"
+      CTI_DEDUP_CACHE: /data/dedup_cache.json
+    command: ["python", "-u", "opencti_to_deceptr.py"]
+    networks: [opencti_net, internal]
+    depends_on:
+      api:
+        condition: service_healthy
+      opencti:
+        condition: service_healthy
+
+  connector-alienvault:
+    image: opencti/connector-alienvault:6.3.6
+    container_name: deceptr-connector-alienvault
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 200m
+    environment:
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: ${OPENCTI_ADMIN_TOKEN:?OPENCTI_ADMIN_TOKEN not set}
+      CONNECTOR_ID: 8bbae241-6289-4faf-b7d6-7503bed50bbc
+      CONNECTOR_TYPE: EXTERNAL_IMPORT
+      CONNECTOR_NAME: AlienVault
+      CONNECTOR_SCOPE: alienvault
+      CONNECTOR_LOG_LEVEL: info
+      CONNECTOR_DURATION_PERIOD: PT30M
+      ALIENVAULT_BASE_URL: https://otx.alienvault.com
+      ALIENVAULT_API_KEY: ${ALIENVAULT_API_KEY}
+      ALIENVAULT_TLP: White
+      ALIENVAULT_CREATE_OBSERVABLES: "true"
+      ALIENVAULT_CREATE_INDICATORS: "true"
+      ALIENVAULT_PULSE_START_TIMESTAMP: 2025-01-01T00:00:00
+      ALIENVAULT_REPORT_STATUS: New
+      ALIENVAULT_REPORT_TYPE: threat-report
+      ALIENVAULT_GUESS_MALWARE: "false"
+      ALIENVAULT_GUESS_CVE: "true"
+    networks: [opencti_net]
+    depends_on:
+      opencti:
+        condition: service_healthy
+
+  # ── OpenCTI Enrichment Service (async, decoupled from main pipeline) ────
+  enricher-opencti:
+    image: python:3.11-slim
+    container_name: deceptr-enricher-opencti
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    working_dir: /enricher
+    volumes:
+      - ./opencti/connectors/opencti_enricher.py:/enricher/opencti_enricher.py:ro
+    environment:
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: ${OPENCTI_ADMIN_TOKEN:?OPENCTI_ADMIN_TOKEN not set}
+      ELASTIC_HOST: http://elasticsearch:9200
+      ELASTIC_USER: elastic
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD:?ELASTIC_PASSWORD not set}
+      EVENTS_INDEX: deceptr-events
+      ENRICH_INTERVAL: "90"
+      ENRICH_LOOKBACK: "60"
+      ENRICH_CACHE_TTL: "1800"
+      ENRICH_GRAPHQL_TIMEOUT: "3"
+    command: ["python", "-u", "opencti_enricher.py"]
+    networks: [opencti_net, internal]
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      opencti:
+        condition: service_healthy
+
+  # ╔══════════════════════════════════════════════════════════════════════════╗
+  # ║  CALDERA — ATT&CK Simulation Framework (profile: caldera)               ║
+  # ╚══════════════════════════════════════════════════════════════════════════╝
+
+  caldera:
+    profiles: ["caldera"]  # keep caldera profile-gated (manual opt-in)
+    image: mitre/caldera:latest
+    container_name: deceptr-caldera
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8888:8888"   # HTTP (calm)
+      - "127.0.0.1:8443:8443"   # HTTPS
+    volumes:
+      - ./attacker/caldera/conf/local.yml:/usr/src/app/conf/local.yml.tmpl:ro
+      - ./attacker/caldera/conf/render_config_v2.py:/usr/src/app/conf/render_config.py:ro
+      - ./attacker/caldera/payloads:/usr/src/app/plugins/stockpile/data/abilities/custom:ro
+      - ./attacker/caldera/data:/usr/src/app/data
+    env_file:
+      - ./attacker/caldera/.env
+    environment:
+      - CALDERA_CONFIG=/usr/src/app/conf/local.yml
+      - SHELL=/bin/sh

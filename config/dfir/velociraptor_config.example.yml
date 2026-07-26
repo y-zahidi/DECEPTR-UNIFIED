@@ -1,0 +1,37 @@
+# Velociraptor Configuration Example
+# This is a representative configuration showing DFIR collection settings
+
+client:
+  server_url: "https://velociraptor.example.com:8889"
+  ca_cert: "/etc/velociraptor/ca.pem"
+
+monitoring:
+  enable_monitoring: true
+  poll_interval: 60
+
+services:
+  client_monitoring:
+    enable: true
+  
+  foreman:
+    enable: true
+
+collections:
+  default_artifacts:
+    - "Windows.Sys.Info"
+    - "Windows.System.Processes"
+    - "Windows.Network.Netstat"
+    - "Windows.EventLogs.Security"
+    - "Windows.EventLogs.System"
+    - "Windows.EventLogs.Application"
+
+forensic:
+  chain_of_custody:
+    enabled: true
+    hash_algorithms:
+      - SHA256
+      - SHA512
+  
+  output_format:
+    - json
+    - csv

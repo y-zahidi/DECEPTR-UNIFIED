@@ -1,0 +1,36 @@
+# OpenCTI Connector Configuration Example
+# This is a representative configuration showing CTI integration settings
+
+connectors:
+  deceptr_to_cti:
+    enabled: true
+    type: "stream"
+    config:
+      url: "http://opencti:8080"
+      token: "${OPENCTI_ADMIN_TOKEN}"
+      update_existing_data: false
+  
+  cti_to_deceptr:
+    enabled: true
+    type: "external_import"
+    config:
+      url: "http://deceptr-api:8000"
+      interval: 90
+  
+  enrichment:
+    enabled: true
+    type: "external_enrichment"
+    config:
+      url: "http://deceptr-api:8000"
+      timeout: 30
+
+enrichment_sources:
+  - name: "AlienVault OTX"
+    enabled: true
+    config:
+      api_key: "${OTX_API_KEY}"
+  
+  - name: "VirusTotal"
+    enabled: true
+    config:
+      api_key: "${VT_API_KEY}"

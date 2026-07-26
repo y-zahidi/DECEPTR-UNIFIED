@@ -1,0 +1,148 @@
+# ═══════════════════════════════════════════════════════════
+# DECEPTR-UNIFIED — .gitignore global
+# ═══════════════════════════════════════════════════════════
+
+# ── Secrets & credentials ──────────────────────────────
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.pfx
+*.p12
+*.csr
+*.crt
+*.srl
+*.ext
+secrets/
+
+# ── Python ────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.pytest_tmp/
+*.tmp
+
+# ── Node.js ───────────────────────────────────────────
+node_modules/
+
+# ── Docker / volumes ──────────────────────────────────
+mysql_data/
+elastic_data/
+redis_data/
+minio_data/
+postgres_data/
+opensearch_data/
+opencti_data/
+rabbitmq_data/
+
+# ── Honeypot dynamic data ─────────────────────────────
+tpot-runtime/data/cowrie/keys/
+tpot-runtime/data/cowrie/downloads/
+tpot-runtime/data/cowrie/log/
+tpot-runtime/data/dionaea/
+**/cowrie_logs/
+**/dionaea_logs/
+**/rdp_captures/
+**/rdp_logs/
+**/ldap/certs/
+**/ssh-keys/
+cowrie/data/ssh-keys/
+*.log
+logs/
+
+# ── GeoIP database ─────────────────────────────────────
+**/GeoLite2-City.mmdb
+
+# ── IDEs ─────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*.code-workspace
+
+# ── DFIR generated / sensitive ─────────────────────────
+dfir/reports/
+dfir/resultats/
+dfir/extracted_*/
+dfir/hashes.txt
+dfir/server.config.yaml
+dfir/collector_config.deploy.yaml
+dfir/velociraptor-*.exe
+dfir/*.zip
+dfir/DFIR_Rapport_*.html
+
+# ── Office temp files ───────────────────────────────────
+~$*
+
+# ── OS files ───────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Build artifacts ───────────────────────────────────
+*.pdf
+*.pptx
+
+# ── Demo / simulation trees (removed; keep ignored if recreated locally) ──
+demo/
+simulation/
+demo_collection/
+test_collection/
+dfir/demo/
+
+# ── Generated runtime reports (directory kept via .gitkeep) ──
+reports/*
+!reports/.gitkeep
+
+# ── Attack runner artefacts ──
+attacker/atomic/report_*.json
+attacker/atomic/report_real_*.json
+
+# ── Legacy tests/ layout (consolidated under test/) ──
+tests/
+
+# ── Generated runtime state (DFIR analyzer output, cursors, token stores) ──
+dfir/report_output.html
+dfir/report_output.json
+dfir/report_raw.json
+dfir/cells_check.json
+dfir/report/allowlist.json
+dfir/report/report_output.html
+dfir/dfir-config.json
+deception/pipeline/data/collector_cursor.json
+deception/decoys/canary/store.json
+deception/elk/_check.json
+deception/elk/_check*.json
+.soc-demo/
+
+# ── OpenCTI data ──────────────────────────────────────
+opencti/config/env_file
+opencti/data/
+opencti/scratch/
+
+# ── Local helper / scratch files ──────────────────────
+check.py
+check2.py
+fix.py
+fix_abilities.py
+generate_abilities.py
+get_schema.py
+repair.py
+dump.txt
+nul
+*.bak
+
+# ── Local DFIR runtime / binaries ─────────────────────
+dfir/collections/
+dfir/usb/
+dfir/velociraptor-data/
+dfir/Collector_*
+dfir/velociraptor-v*.exe
+dfir/velociraptor-v*.msi
+dfir/velo_cli_*.txt
