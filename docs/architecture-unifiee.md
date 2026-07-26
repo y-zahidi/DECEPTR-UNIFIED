@@ -1,7 +1,8 @@
 # DECEPTR-UNIFIED — Architecture Unifiée
 
-> Projet académique réalisé dans le cadre de mon cycle d'ingénieur à l'ISMAGI Rabat
+> Projet académique
 > **Yassir ZAHIDI** — 2026
+
 
 
 ---

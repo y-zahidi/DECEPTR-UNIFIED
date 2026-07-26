@@ -1,26 +1,13 @@
 # DECEPTR
 
-**Unified Cyberdeception, DFIR, CTI correlation, and attack-simulation platform — built as a capstone project during my engineering studies at ISMAGI Rabat.**
+**Unified Cyberdeception, DFIR, CTI correlation, and attack-simulation platform design and architecture overview.**
 
 ![status](https://img.shields.io/badge/status-active-5cf2c1?labelColor=0a0e14)
 ![license](https://img.shields.io/badge/license-MIT-5cf2c1?labelColor=0a0e14)
-![docker](https://img.shields.io/badge/docker-compose-5cf2c1?labelColor=0a0e14)
 ![platform](https://img.shields.io/badge/platform-FastAPI%20%7C%20OpenCTI-5cf2c1?labelColor=0a0e14)
 
-## Quick start
-
-```bash
-git clone https://github.com/y-zahidi/DECEPTR-UNIFIED.git
-cd DECEPTR-UNIFIED
-# Copy and configure environment variables
-cp deception/.env.example deception/.env
-cp opencti/.env.example opencti/.env
-cp attacker/caldera/.env.example attacker/caldera/.env
-# Start the full stack
-docker compose up -d
-```
-
-Default credentials, hardening notes, and deployment procedures live in [docs/DEPLOY_GUIDE.md](docs/DEPLOY_GUIDE.md).
+> [!NOTE]
+> This repository serves as a showcase of the project design, architecture, and configuration snapshots for portfolio purposes. The full implementation and codebase are hosted in a private repository.
 
 ## What this is
 
@@ -99,12 +86,9 @@ Unified SOC dashboard with 5 tabs:
 - [ ] Improved ML models for anomaly detection
 - [ ] Automated deployment scripts
 
-## Contributing
-
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on development setup, reporting guidelines, and the pull request workflow.
-
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-Academic project — ISMAGI Rabat, 2026.
+Academic project — 2026.
+
