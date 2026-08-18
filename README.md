@@ -1,95 +1,103 @@
+[![DECEPTR-UNIFIED — cyberdeception to defensive decision](assets/deceptr-case-study-hero.png)](docs/architecture-unifiee.md)
+
 # DECEPTR-UNIFIED
 
-**Unified Cyberdeception, DFIR, CTI correlation, and attack-simulation platform design and architecture overview.**
+**Cyberdeception · DFIR · threat-intelligence correlation · authorized attack validation**
 
-![status](https://img.shields.io/badge/status-active-5cf2c1?labelColor=0a0e14)
-![license](https://img.shields.io/badge/license-MIT-5cf2c1?labelColor=0a0e14)
-![platform](https://img.shields.io/badge/platform-FastAPI%20%7C%20OpenCTI-5cf2c1?labelColor=0a0e14)
+DECEPTR-UNIFIED is a validation-driven security platform design that connects deception signals, forensic context, threat intelligence, and controlled adversary simulation into one defensive feedback loop.
 
-## What this is
+> **Portfolio showcase:** This repository documents the architecture, selected sanitized configurations, validation approach, and engineering decisions for a private personal implementation. It intentionally excludes complete source code, operational secrets, and environment-specific deployment material.
 
-A working security platform that combines four main capabilities, scoped to what runs on a single machine:
+[Architecture](docs/architecture-unifiee.md) · [Security policy](SECURITY.md) · [Configuration examples](config) · [Report an issue](../../issues)
 
-- **Cyberdeception** — honeypots (Cowrie, Dionaea, web), canary files, breadcrumbs, fake LDAP/AD, honeyport (SQL/RDP/WinRM), and dynamic deception escalation (6 levels from NO_ACTION to BLOCK).
-- **DFIR** — Velociraptor offline collection + forensic reporting with 23 Tier 2/3 analyzers, ATT&CK Navigator export, and chain of custody.
-- **Attack simulation** — Atomic Red Team (15 techniques) + reproducible validation scripts.
-- **CTI correlation** — OpenCTI 6.3.6 with bidirectional DECEPTR↔CTI connectors, AlienVault OTX, and asynchronous enrichment.
+---
 
-## Architecture
+## The defensive feedback loop
 
-![DECEPTR Unified Architecture](docs/architecture-overview.png)
+| 1 · Deceive | 2 · Observe | 3 · Correlate | 4 · Validate | 5 · Harden |
+|:--|:--|:--|:--|:--|
+| Present controlled decoys, canaries, and breadcrumbs. | Capture high-signal interaction and telemetry. | Enrich events with DFIR and CTI context. | Reproduce authorized scenarios with controlled emulation. | Improve the response logic and re-test the result. |
 
-## What lives where
+The project is designed to answer a practical question: **when a decoy or monitored asset is touched, can the system produce contextual evidence that an analyst can trust and act on?**
 
-```
-.
-├── docker-compose.yml              # Full stack (30 services)
-├── docker-compose.lite.yml         # Lite version (8 GB RAM)
-├── config/
-│   ├── deception/                  # Honeypot configs
-│   │   └── pipeline_config.example.yml
-│   ├── dfir/                       # Velociraptor configs
-│   │   └── velociraptor_config.example.yml
-│   ├── opencti/                    # OpenCTI connectors
-│   │   └── connector_config.example.yml
-│   └── attacker/                  # CALDERA configs
-│       └── caldera_config.example.yml
-├── docs/
-│   ├── architecture-unifiee.md     # Detailed architecture
-│   ├── DEPLOY_GUIDE.md             # Deployment guide
-│   ├── audit.md                    # Technical audit
-│   └── architecture-overview.png   # Architecture diagram
-└── screenshots/                    # From real deployments
-```
+---
 
-## Detections shipped
+## Public case-study evidence
 
-- **Deception pipeline**: 7-stage processing (normalizer → enricher → correlator → risk_scorer → detector → alerter → responder)
-- **Dynamic deception**: 6-level escalation (NO_ACTION → ANALYZE → TARPIT → DEPLOY_DECOY → ESCALATE → BLOCK)
-- **DFIR analyzers**: 23 Tier 2/3 analyzers (memory injection, lateral movement, anomaly/beaconing, browser forensics, ransomware playbook, registry/WMI persistence, DNS tunnel, NTFS timeline, prefetch, SRUM, PowerShell forensics, attack reconstruction, YARA)
-- **Threat intel**: GeoLite2, VirusTotal, AbuseIPDB, Feodo Tracker, MITRE ATT&CK, MISP client
-- **ML anomaly detection**: Beaconing C2 + process tree analysis (stdlib pure)
+### A controlled validation narrative
 
-## Why this stack
+A validation run begins inside an authorized lab with an interaction against a decoy service, canary, breadcrumb, or monitored deception surface. The resulting event is normalized and enriched, evaluated for risk and detection context, surfaced to the defensive workflow, and made available for DFIR and CTI correlation. The scenario is then repeated after tuning to validate the improvement.
 
-- **Deception**: Active defense with realistic decoys and automated response
-- **DFIR depth**: Offline collection preserves evidence, bridge enables real-time correlation
-- **Attack validation**: CALDERA + Atomic Red Team provide reproducible MITRE ATT&CK validation
-- **CTI integration**: OpenCTI provides campaign-level correlation beyond individual alerts
-- **Hardening**: All components run with security constraints (no-new-privileges, cap_drop, pids_limit, read_only + tmpfs, CPU/memory limits)
+This is a **defensive validation pattern**, not a guide for attacking third-party systems. Every offensive capability in the private implementation is constrained to owned, simulated, CTF, or explicitly permitted environments.
 
-## Dashboard
+| Evidence layer | Publicly documented in this repository |
+|:--|:--|
+| Deception strategy | Decoys, honeypots, canary files, honeyports, fake directory services, and breadcrumbs. |
+| Validation approach | Controlled CALDERA and atomic test scenarios mapped to MITRE ATT&CK. |
+| Detection pipeline | Normalization, enrichment, correlation, risk scoring, alerting, and response design. |
+| DFIR / CTI integration | Offline forensic collection, shared alert/IOC concepts, and OpenCTI correlation architecture. |
+| Safety boundary | Sanitized examples only; no secrets, production topology, or full implementation source. |
 
-Unified SOC dashboard with 5 tabs:
-- **SOC**: Overall security posture
-- **Alertes**: Real-time alerts and incidents
-- **CTI**: Threat intelligence feeds and correlations
-- **Rapports**: DFIR reports and forensic analysis
-- **Infrastructure**: System health and component status
+---
 
-## Lessons learned
+## Architecture at a glance
 
-- Deception effectiveness depends on realistic decoys and proper placement
-- DFIR bridge requires careful schema mapping and anti-replay protection
-- CTI enrichment must be asynchronous to avoid pipeline blocking
-- Hardening Docker containers is essential for production deployment
-- Testing E2E scenarios validates the entire detection chain
+### Security system flow
+
+![DECEPTR architecture: controlled validation, deception boundary, evidence pipeline, defensive decision, and revalidation](docs/diagrams/deceptr-architecture.png)
+
+This simplified view explains the complete feedback loop first: authorized validation creates controlled evidence; deception creates high-signal interaction; the pipeline adds context; defensive decisions connect to CTI and DFIR; the result is tuned and revalidated.
+
+### Component architecture
+
+![DECEPTR unified architecture](docs/architecture-overview.png)
+
+The detailed architecture joins five responsibilities: **deception**, **collection and pipeline processing**, **storage and enrichment**, **DFIR and threat-intelligence correlation**, and **authorized attack simulation**. The component map, trust boundaries, and technology choices are available in the [architecture dossier](docs/architecture-unifiee.md).
+
+| Domain | Core design responsibility |
+|:--|:--|
+| Cyberdeception | Create believable high-signal interaction points without exposing real systems. |
+| Pipeline | Normalize events, enrich relevant context, score risk, and route defensible alerts. |
+| DFIR | Preserve evidence and connect investigation findings to observed activity. |
+| CTI | Correlate indicators and techniques with campaign-level context. |
+| Validation | Exercise the defensive path through controlled ATT&CK-aligned scenarios. |
+
+---
+
+## What this public repository contains
+
+| Included | Intentionally excluded |
+|:--|:--|
+| Architecture documentation and system diagrams | Complete private application source |
+| Sanitized Docker and configuration examples | Credentials, private endpoints, and infrastructure inventories |
+| Security policy, issue templates, and contribution workflow | Privileged orchestration and operational deployment details |
+| Representative design decisions and validation context | Any sensitive material from third parties or personal environments |
+
+---
+
+## Technology landscape
+
+The documented design brings together **FastAPI**, **Docker**, **OpenCTI**, **Elastic Stack components**, **Velociraptor**, **CALDERA**, **atomic testing**, and deception tooling such as **Cowrie** and **Dionaea**. Each component has a specific role in the defensive loop; the project is not a collection of tools presented without context.
+
+---
+
+## Responsible use
+
+> **Responsible use:** The project is for authorized security research, cyber-range learning, CTF environments, and defensive validation. Do not use its concepts, configurations, or documentation to target systems you do not own or lack explicit permission to test.
+
+Please report security concerns through the repository’s [security policy](SECURITY.md). For technical context, begin with the [architecture dossier](docs/architecture-unifiee.md).
+
+---
 
 ## Roadmap
 
-- [ ] Additional honeypot types (RDP, SMB, HTTP advanced)
-- [ ] More DFIR analyzers (cloud forensics, mobile)
-- [ ] Extended CTI connectors (more threat feeds)
-- [ ] Improved ML models for anomaly detection
-- [ ] Automated deployment scripts
+- [ ] Publish additional redacted validation evidence showing the complete detection-to-decision loop.
+- [ ] Add a concise technique-to-telemetry-to-response matrix for authorized scenarios.
+- [ ] Expand the public architecture notes with threat-model and trust-boundary annotations.
+- [ ] Continue refining the private implementation through controlled validation.
 
+## Author
 
-> [!NOTE]
-> This repository serves as a showcase of the project design, architecture, and configuration snapshots for portfolio purposes. The full implementation and codebase are hosted in a private repository.
+**Yassir Zahidi** — Adversary-informed security builder focused on cyberdeception, detection engineering, DFIR, and authorized security testing.
 
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-Academic project — 2026.
-
+[Portfolio](https://y-zahidi.github.io) · [LinkedIn](https://www.linkedin.com/in/yassir-zahidi/) · [GitHub](https://github.com/y-zahidi)

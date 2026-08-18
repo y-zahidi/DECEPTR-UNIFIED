@@ -1,0 +1,27 @@
+%%{init: {'theme':'base','themeVariables': {'background':'#07111D','primaryColor':'#0E1C2C','primaryTextColor':'#E7EEF7','primaryBorderColor':'#79E2FF','lineColor':'#9CB0C5','tertiaryColor':'#0E1C2C','clusterBkg':'#0E1C2C','clusterBorder':'#2A4560','fontFamily':'Arial'}}}%%
+flowchart TB
+    A["1. Controlled validation<br/>CALDERA scenarios · Atomic Red Team"]
+    B["2. Deception boundary<br/>Honeypots · canaries · breadcrumbs · decoy services"]
+    C["3. Evidence pipeline<br/>Collect → normalize → enrich → score → correlate"]
+    D["4. Defensive decision<br/>Contextual alert, analyst triage, and response"]
+    E["5. Revalidation<br/>Tune the detection or control, then test again"]
+
+    A --> B --> C --> D --> E
+    E -. feedback loop .-> A
+
+    C --> CTI["CTI context<br/>OpenCTI indicators and campaign correlation"]
+    D <--> DFIR["DFIR context<br/>Offline evidence and investigation reports"]
+    CTI --> DFIR
+
+    classDef red fill:#3A1720,stroke:#FF7A8A,color:#E7EEF7,stroke-width:2px;
+    classDef violet fill:#2A1D47,stroke:#B89CFF,color:#E7EEF7,stroke-width:2px;
+    classDef blue fill:#0E2A3C,stroke:#79E2FF,color:#E7EEF7,stroke-width:2px;
+    classDef green fill:#12362F,stroke:#5CF2C1,color:#E7EEF7,stroke-width:2px;
+
+    class A red;
+    class B violet;
+    class C blue;
+    class D,CTI,DFIR green;
+    class E violet;
+
+    linkStyle default stroke:#9CB0C5,stroke-width:2px;
