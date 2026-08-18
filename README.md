@@ -44,7 +44,7 @@ This is a **defensive validation pattern**, not a guide for attacking third-part
 
 ### Security system flow
 
-![DECEPTR architecture: controlled validation, deception boundary, evidence pipeline, defensive decision, and revalidation](docs/diagrams/deceptr-architecture.png)
+![DECEPTR architecture: controlled validation, deception boundary, evidence pipeline, defensive decision, and revalidation](docs/diagrams/deceptr-architecture-transparent.png)
 
 This simplified view explains the complete feedback loop first: authorized validation creates controlled evidence; deception creates high-signal interaction; the pipeline adds context; defensive decisions connect to CTI and DFIR; the result is tuned and revalidated.
 
